@@ -10,36 +10,71 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 movie_data = pd.read_csv("./movie_metadata.csv")
-# print(movie_data.shape)
-# print(movie_data.count())
+
+# sns.heatmap(
+#     movie_data.corr(),
+#     linewidths=0.25,
+#     vmax=1.0,
+#     square=True,
+#     cmap=sns.color_palette("BuGn"),
+#     linecolor="black",
+#     annot=True,
+# )
+# plt.show()
+
+# calculate data length that contains many missing values
+# nullnum = []
+# for i in range(13, 29)[::-1]:
+#     count = len(movie_data.dropna(thresh=i, axis=0))
+#     nullnum.append(count)
+# nullnum = pd.DataFrame(
+#     {"num_of_missing_data": list(range(29 - 13)), "data_length": nullnum}
+# )
+# sns.catplot(
+#     x="num_of_missing_data", y="data_length", data=nullnum, kind="bar", color="g"
+# )
+# plt.show()
+
+# delete data that contains many missing values
+df = movie_data.dropna(thresh=22, axis=0)
 
 # reduce dimension for drop nan values except gross and budget
-df = movie_data.drop(["gross", "budget"], axis=1).dropna(axis=0)
-# sns.heatmap(data=movie_data.corr(), annot=True)
-# print(df.head())
+df.isnull().sum(axis=0).plot.bar(color="g")
+plt.show()
+# sns.catplot(df.isnull().sum(axis=0))
+# plt.show()
+print(df.isnull().sum())
+print(df.isnull().any(axis=1).sum())
+print(df.drop(["gross", "budget"], axis=1).isnull().sum())
+print(df.drop(["gross", "budget"], axis=1).isnull().any(axis=1).sum())
+print(
+    (
+        df.isnull().any(axis=1) & df(["gross", "budget"], axis=1).isnull().any(axis=1)
+    ).sum()
+)
+df = movie_data.drop(["gross", "budget"], axis=1).dropna(how="any", axis=0)
 df = pd.concat([df, movie_data.loc[df.index, ["gross", "budget"]]], axis=1)
+
 
 # reindex because deleted deleted parameter
 df.reset_index(drop=True, inplace=True)
-# print(df.columns)
 # sns.boxplot(x="color", y="title_year", data=df, palette="PRGn")
 
 
 cut = pd.cut(df.imdb_score, bins=list(np.arange(1, 11)))
 cut2 = pd.cut(df.title_year, bins=list(5 * (np.arange(380, 405))))
 cut3 = pd.cut(df.imdb_score, bins=list([0, 4, 6, 7, 8, 10]))
+# cut3 = pd.qcut(df.imdb_score, 5)
 df["imdb_score_bin"] = cut
 df["year_range"] = cut2
 df["pc_imdb"] = cut3
 le = LabelEncoder()
 df["pc_imdb"] = le.fit_transform(df["pc_imdb"])
-# fig, ax = plt.subplots(figsize=(10, 10))
-# plt.xticks(rotation=45)
+fig, ax = plt.subplots(figsize=(10, 10))
 # sns.barplot(df["year_range"], df["budget"], ci=None)
-# sns.barplot(df["year_range"], df["gross"], ci=None)
-# sns.barplot(df["imdb_score_bin"], df["gross"], ci=None)
+sns.barplot(df["imdb_score_bin"], df["gross"], ci=None)
+# sns.barplot(df["pc_imdb"], df["gross"], ci=None)
 # sns.boxplot(data=df, x="imdb_score_bin", y="gross")
-
 
 mean_chart = pd.DataFrame(df.groupby(by=["year_range"])["budget"].mean())
 df = pd.merge(df, mean_chart, left_on="year_range", right_index=True)
@@ -49,10 +84,9 @@ df["budget_x"].fillna(df["budget_y"], inplace=True)
 
 
 # apply the decision tree regression to fill the gross
-df2 = df
 var_mod = ["imdb_score_bin", "year_range"]
 for i in var_mod:
-    df2[i] = le.fit_transform(df2[i])
+    df[i] = le.fit_transform(df[i])
 clf = DecisionTreeRegressor()
 clf.fit(
     df[df["gross"].notnull()][["imdb_score_bin", "year_range"]],
@@ -81,10 +115,8 @@ df["age"] = today.year - df.title_year
 # pd.DataFrame(df["director_name"].value_counts())
 # dir_ran = pd.concat([k, l, m], axis=1)
 # dir_ran_sorted = dir_ran.sort_values(by="imdb_score", ascending=False)
-# print(dir_ran_sorted)
 
 # col_5 = list(df["director_name"].value_counts().index[:5])
-# print(col_5)
 
 # pp = df.loc[
 #     (df.director_name == col_5[0])
@@ -112,15 +144,14 @@ cum_sum = pca.explained_variance_ratio_.cumsum()
 pca.explained_variance_ratio_[:10].sum()
 cum_sum = cum_sum * 100
 fig, ax = plt.subplots(figsize=(8, 8))
-plt.bar(
-    range(20),
-    cum_sum,
-    label="Cumulative _Sum_of_Explained _Varaince",
-    color="b",
-    alpha=0.5,
-)
+# plt.bar(
+#     range(20),
+#     cum_sum,
+#     label="Cumulative _Sum_of_Explained _Varaince",
+#     color="b",
+#     alpha=0.5,
+# )
 
-plt.show()
 
 pca = PCA(n_components=3)
 X_reduced = pca.fit_transform(X_std)
@@ -138,3 +169,4 @@ ax.w_yaxis.set_ticklabels([])
 ax.set_zlabel("3rd eigenvector")
 ax.w_zaxis.set_ticklabels([])
 
+# plt.show()
