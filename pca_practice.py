@@ -8,7 +8,7 @@ from datetime import date
 from sklearn.decomposition import PCA
 from mpl_toolkits.mplot3d import Axes3D
 
-
+le = LabelEncoder()
 movie_data = pd.read_csv("./movie_metadata.csv")
 
 # sns.heatmap(
@@ -39,20 +39,22 @@ movie_data = pd.read_csv("./movie_metadata.csv")
 df = movie_data.dropna(thresh=22, axis=0)
 
 # reduce dimension for drop nan values except gross and budget
-df.isnull().sum(axis=0).plot.bar(color="g")
-plt.show()
+# df.isnull().sum(axis=0).plot.bar(color="g")
+# plt.show()
 # sns.catplot(df.isnull().sum(axis=0))
 # plt.show()
-print(df.isnull().sum())
-print(df.isnull().any(axis=1).sum())
-print(df.drop(["gross", "budget"], axis=1).isnull().sum())
-print(df.drop(["gross", "budget"], axis=1).isnull().any(axis=1).sum())
-print(
-    (
-        df.isnull().any(axis=1) & df(["gross", "budget"], axis=1).isnull().any(axis=1)
-    ).sum()
-)
-df = movie_data.drop(["gross", "budget"], axis=1).dropna(how="any", axis=0)
+# print(df.isnull().sum())
+# print(df.isnull().any(axis=1).sum())
+# print(df.drop(["gross", "budget"], axis=1).isnull().sum())
+# print(df.drop(["gross", "budget"], axis=1).isnull().any(axis=1).sum())
+# print(
+#     (
+#         df.isnull().any(axis=1)
+#         & df.drop(["gross", "budget"], axis=1).isnull().any(axis=1)
+#     ).sum()
+# )
+
+df = df.drop(["gross", "budget"], axis=1).dropna(how="any", axis=0)
 df = pd.concat([df, movie_data.loc[df.index, ["gross", "budget"]]], axis=1)
 
 
@@ -60,34 +62,43 @@ df = pd.concat([df, movie_data.loc[df.index, ["gross", "budget"]]], axis=1)
 df.reset_index(drop=True, inplace=True)
 # sns.boxplot(x="color", y="title_year", data=df, palette="PRGn")
 
+# binning
+year_range = pd.cut(df.title_year, bins=list(5 * (np.arange(385, 405))))
+imdb_score_bin = pd.cut(df.imdb_score, bins=list(np.arange(1, 11)))
+imdb_score_bias_bin = pd.cut(df.imdb_score, bins=list([0, 4, 6, 7, 8, 10]))
+imdb_score_qcut_bin = pd.qcut(df.imdb_score, 5)
 
-cut = pd.cut(df.imdb_score, bins=list(np.arange(1, 11)))
-cut2 = pd.cut(df.title_year, bins=list(5 * (np.arange(380, 405))))
-cut3 = pd.cut(df.imdb_score, bins=list([0, 4, 6, 7, 8, 10]))
-# cut3 = pd.qcut(df.imdb_score, 5)
-df["imdb_score_bin"] = cut
-df["year_range"] = cut2
-df["pc_imdb"] = cut3
-le = LabelEncoder()
-df["pc_imdb"] = le.fit_transform(df["pc_imdb"])
-fig, ax = plt.subplots(figsize=(10, 10))
-# sns.barplot(df["year_range"], df["budget"], ci=None)
-sns.barplot(df["imdb_score_bin"], df["gross"], ci=None)
-# sns.barplot(df["pc_imdb"], df["gross"], ci=None)
-# sns.boxplot(data=df, x="imdb_score_bin", y="gross")
+df["year_range"] = year_range
+df["imdb_score_bin"] = imdb_score_bin
+df["imdb_score_bias_bin"] = imdb_score_bias_bin
+df["imdb_score_qcut_bin"] = imdb_score_qcut_bin
+
+df["imdb_score_bias_bin"] = le.fit_transform(imdb_score_bias_bin)
 
 mean_chart = pd.DataFrame(df.groupby(by=["year_range"])["budget"].mean())
+# print(df[df["year_range"] == "(1970, 1975]"])
+fig, ax = plt.subplots(figsize=(10, 10))
+# sns.barplot(df["year_range"], df["budget"], ci=None)
+# plt.xticks(rotation=45)
+# sns.barplot(df["imdb_score_bias_bin"], df["gross"], ci=None)
+
 df = pd.merge(df, mean_chart, left_on="year_range", right_index=True)
-# delete nan values
+
+# fill nan values
 df["budget_x"].fillna(df["budget_y"], inplace=True)
 # print(df["budget_x"].count())
 
 
-# apply the decision tree regression to fill the gross
-var_mod = ["imdb_score_bin", "year_range"]
-for i in var_mod:
+# encode binning category
+# df["imdb_score_bias_bin"] = le.fit_transform(imdb_score_bias_bin)
+# df["year_range"] = le.fit_transform(df["year_range"])
+mods = ["imdb_score_bin", "year_range", "imdb_score_bias_bin", "imdb_score_qcut_bin"]
+for i in mods:
     df[i] = le.fit_transform(df[i])
+
+# apply the decision tree regression to fill the gross
 clf = DecisionTreeRegressor()
+
 clf.fit(
     df[df["gross"].notnull()][["imdb_score_bin", "year_range"]],
     df["gross"].dropna(axis=0),
@@ -128,7 +139,8 @@ df["age"] = today.year - df.title_year
 
 # sns.boxplot(x="director_name", y="imdb_score", data=pp)
 
-
+Y = df["imdb_score_bias_bin"]
+df = df.drop(["imdb_score_qcut_bin", "imdb_score_bias_bin"], axis=1)
 str_list = []  # empty list to contain columns with strings (words)
 for colname, colvalue in df.iteritems():
     if type(colvalue[1]) == str:
@@ -138,12 +150,12 @@ X = df[num_list]
 
 
 X_std = StandardScaler().fit_transform(X)
-pca = PCA(n_components=20)
-Y = pca.fit_transform(X_std)
-cum_sum = pca.explained_variance_ratio_.cumsum()
-pca.explained_variance_ratio_[:10].sum()
-cum_sum = cum_sum * 100
-fig, ax = plt.subplots(figsize=(8, 8))
+# pca = PCA(svd_solver="full")
+# Y = pca.fit_transform(X_std)
+# cum_sum = pca.explained_variance_ratio_.cumsum()
+# pca.explained_variance_ratio_[:10].sum()
+# cum_sum = cum_sum * 100
+# fig, ax = plt.subplots(figsize=(8, 8))
 # plt.bar(
 #     range(20),
 #     cum_sum,
@@ -152,10 +164,9 @@ fig, ax = plt.subplots(figsize=(8, 8))
 #     alpha=0.5,
 # )
 
-
 pca = PCA(n_components=3)
 X_reduced = pca.fit_transform(X_std)
-Y = df["pc_imdb"]
+# Y = df["imdb_score_bias_bin"]
 
 plt.clf()
 fig = plt.figure(1, figsize=(8, 6))
@@ -169,4 +180,4 @@ ax.w_yaxis.set_ticklabels([])
 ax.set_zlabel("3rd eigenvector")
 ax.w_zaxis.set_ticklabels([])
 
-# plt.show()
+plt.show()

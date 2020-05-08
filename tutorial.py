@@ -28,15 +28,12 @@ df.reset_index(drop=True, inplace=True)
 
 
 cut = pd.cut(df.imdb_score, bins=list(np.arange(1, 11)))
-
 cut2 = pd.cut(df.title_year, bins=list(5 * (np.arange(380, 405))))
-
 cut3 = pd.cut(df.imdb_score, bins=list([0, 4, 6, 7, 8, 10]))
-df["imdb_score_bin"] = cut
 
+df["imdb_score_bin"] = cut
 df["year_range"] = cut2
 df["pc_imdb"] = cut3
-
 
 le = LabelEncoder()
 df["pc_imdb"] = le.fit_transform(df["pc_imdb"])
@@ -139,6 +136,7 @@ for colname, colvalue in df.iteritems():
     if type(colvalue[1]) == str:
         str_list.append(colname)
 num_list = df.columns.difference(str_list)
+print(num_list)
 X = df[num_list]
 X.shape
 
